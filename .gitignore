@@ -1,9 +1,19 @@
-.idea/
+# Build directories
+cmake-build-debug/
+cmake-build-release/
 build/
-*.o
-*.obj
-*.exe
-*.out
-*.log
+
+# CLion
+.idea/
+
+# CMake
 CMakeFiles/
 CMakeCache.txt
+
+# Ninja
+.ninja_log
+.ninja_deps
+
+# binaries
+*.exe
+*.out
