@@ -1,23 +1,81 @@
-#pragma once
-#include <cstddef>  //this is important c++ lib, includes size_t which is unsigned int (much larger rank than int)
+/*
+    MiniSTL - Vector Implementation
+    --------------------------------
+    A simplified implementation of std::vector for educational purposes.
 
+    Features:
+    - Dynamic contiguous storage
+    - Rule of Five (copy/move semantics)
+    - Random access iterators
+    - STL algorithm compatibility
+    - push_back / emplace_back
+    - insert / erase
+    - resize / reserve / shrink_to_fit
+
+    Complexity guarantees follow std::vector where possible.
+
+    Author: Adam Abu Saleh
+*/
+
+#pragma once
+#include <cstddef>  // size_t
+#include <cassert>  // assert()
+#include <utility>
+#include <type_traits>
+#include <algorithm>
 namespace ministl {
 
+/*
+    Vector<T>
+
+    A dynamic array container similar to std::vector.
+
+    Properties:
+    - contiguous memory layout
+    - amortized O(1) push_back
+    - constant time random access
+*/
     template<typename T>
     class Vector {
+
     private:
+
+        template<typename Ptr>
+        class VectorIterator;   // forward declaration
+
+        // pointer to the beginning of the allocated storage
         T* data_;
+
+        // number of elements currently stored
         size_t size_;
+
+        // total allocated storage capacity
         size_t capacity_;
 
         void reallocate(size_t new_capacity);
 
     public:
+
+        using Iterator = VectorIterator<T*>;
+        using ConstIterator = VectorIterator<const T*>;
+
         Vector();
+        Vector(const Vector& other);
+        Vector(Vector&& other) noexcept; //move constructor
         ~Vector();
 
         void push_back(const T& value);
+        void push_back(T&& value);
         void pop_back();
+
+        template<typename... Args>
+        void emplace_back(Args&&... args);
+
+        template<typename... Args>
+        Iterator emplace(Iterator pos, Args&&... args);
+
+        void insert(size_t index, const T& value);
+        void erase(size_t index);
 
         void reserve(size_t new_capacity);
 
@@ -25,16 +83,167 @@ namespace ministl {
         size_t capacity() const;
 
         bool empty() const;
+        void clear();
+
+        void resize(size_t new_size);
+        void resize(size_t new_size, const T& value);
+
+        void shrink_to_fit();
+
+        void sort();
+        template<typename Compare>
+        void sort(Compare comp) {
+            std::sort(begin(), end(), comp);
+        }
 
         T& operator[](size_t index);
         const T& operator[](size_t index) const;
 
-        // Iterators
-        T* begin();
-        T* end();
+        T& at(size_t index);
+        const T& at(size_t index) const;
 
-        const T* begin() const;
-        const T* end() const;
+        Vector& operator=(const Vector& other);
+        Vector& operator=(Vector&& other) noexcept;
+
+        T* data() noexcept { return data_; }
+        const T* data() const noexcept { return data_; }
+
+        void swap(Vector& other) noexcept {
+            using std::swap;
+            swap(data_, other.data_);
+            swap(size_, other.size_);
+            swap(capacity_, other.capacity_);
+        }
+
+        Iterator begin() {
+            return Iterator(data_);
+        }
+
+        Iterator end() {
+            return Iterator(data_ + size_);
+        }
+
+        ConstIterator begin() const {
+            return ConstIterator(data_);
+        }
+
+        ConstIterator end() const {
+            return ConstIterator(data_ + size_);
+        }
+
+        ConstIterator cbegin() const {
+            return ConstIterator(data_);
+        }
+
+        ConstIterator cend() const {
+            return ConstIterator(data_ + size_);
+        }
+
+        T& front();
+        const T& front() const;
+
+        T& back();
+        const T& back() const;
+
+/*
+    Random-access iterator for Vector.
+
+    Internally wraps a raw pointer since Vector stores elements
+    in contiguous memory.
+
+    Supports full random-access iterator operations so STL
+    algorithms like std::sort work.
+*/
+    private:
+        template<typename Ptr>
+        class VectorIterator {
+        private:
+            Ptr ptr;
+
+        public:
+            using reference = std::remove_pointer_t<Ptr>&;
+            using pointer   = Ptr;
+
+            explicit VectorIterator(Ptr p) : ptr(p) {}
+
+            reference operator*() const { return *ptr; }
+
+            pointer operator->() const { return ptr; }
+
+            // prefix increment
+            VectorIterator& operator++() {
+                ++ptr;
+                return *this;
+            }
+
+            VectorIterator operator++(int) {
+                VectorIterator tmp = *this;
+                ++ptr;
+                return tmp;
+            }
+
+            VectorIterator& operator--() {
+                --ptr;
+                return *this;
+            }
+
+            VectorIterator operator--(int) {
+                VectorIterator tmp = *this;
+                --ptr;
+                return tmp;
+            }
+
+            VectorIterator operator+(std::ptrdiff_t n) const {
+                return VectorIterator(ptr + n);
+            }
+
+            VectorIterator operator-(std::ptrdiff_t n) const {
+                return VectorIterator(ptr - n);
+            }
+
+            std::ptrdiff_t operator-(const VectorIterator& other) const {
+                return ptr - other.ptr;
+            }
+
+            VectorIterator& operator+=(std::ptrdiff_t n) {
+                ptr += n;
+                return *this;
+            }
+
+            VectorIterator& operator-=(std::ptrdiff_t n) {
+                ptr -= n;
+                return *this;
+            }
+
+            reference operator[](std::ptrdiff_t n) const {
+                return *(ptr + n);
+            }
+
+            bool operator==(const VectorIterator& other) const {
+                return ptr == other.ptr;
+            }
+
+            bool operator!=(const VectorIterator& other) const {
+                return ptr != other.ptr;
+            }
+
+            bool operator<(const VectorIterator& other) const {
+                return ptr < other.ptr;
+            }
+
+            bool operator>(const VectorIterator& other) const {
+                return ptr > other.ptr;
+            }
+
+            bool operator<=(const VectorIterator& other) const {
+                return ptr <= other.ptr;
+            }
+
+            bool operator>=(const VectorIterator& other) const {
+                return ptr >= other.ptr;
+            }
+        };
+
     };
 
     //simple constructor
@@ -44,6 +253,29 @@ namespace ministl {
     {
     }
 
+    //copy constructor
+    template<typename T>
+    Vector<T>:: Vector(const Vector& other)
+            : data_(new T[other.capacity_]),
+              size_(other.size_),
+              capacity_(other.capacity_)
+    {
+        for (size_t i = 0; i < size_; ++i)
+            data_[i] = other.data_[i];
+    }
+
+    //move constructor
+    template<typename T>
+    Vector<T>::Vector(Vector&& other) noexcept
+            : data_(other.data_),
+              size_(other.size_),
+              capacity_(other.capacity_)
+    {
+        other.data_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = 0;
+    }
+
     //simple destructor
     template<typename T>
     Vector<T>::~Vector()
@@ -51,15 +283,22 @@ namespace ministl {
         delete[] data_;
     }
 
-    //handling resizing
+/*
+    Reallocates storage to a new capacity.
+
+    Allocates new memory and move-constructs the existing elements
+    into the new storage.
+
+    Complexity: O(n)
+*/
     template<typename T>
     void Vector<T>::reallocate(size_t new_capacity)
     {
         T* new_data = new T[new_capacity];
 
-        for (size_t i = 0; i < size_; i++)
+        for (size_t i = 0; i < size_; ++i)
         {
-            new_data[i] = data_[i];
+            new_data[i] = std::move(data_[i]);
         }
 
         delete[] data_;
@@ -68,30 +307,104 @@ namespace ministl {
         capacity_ = new_capacity;
     }
 
-    //inserting value to vector
+/*
+    Appends an element to the end of the vector.
+
+    If capacity is exhausted, the storage grows (doubling strategy).
+
+    Complexity:
+    - Amortized O(1)
+    - Worst case O(n) when reallocation occurs
+*/
     template<typename T>
     void Vector<T>::push_back(const T& value)
     {
         if (size_ == capacity_)
         {
             size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+            // geometric growth to guarantee amortized O(1) push_back
             reallocate(new_capacity);
         }
 
         data_[size_] = value;
-        size_++;
+        ++size_;
     }
 
-    //remove value from vector
+    //move version
+    template<typename T>
+    void Vector<T>::push_back(T&& value)
+    {
+        if (size_ == capacity_){
+            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+            reallocate(new_capacity);
+        }
+
+        data_[size_] = std::move(value);
+        ++size_;
+    }
+
+/*
+    Removes the last element.
+
+    Complexity: O(1)
+*/
     template<typename T>
     void Vector<T>::pop_back()
     {
-        if (size_ > 0)
-        {
-            size_--;
-        }
+        assert(size_ > 0);
+        --size_;
+        data_[size_].~T();
     }
 
+    //same as push_back but this avoids creating temp copies
+    template<typename T>
+    template<typename... Args>
+    void Vector<T>::emplace_back(Args&&... args)
+    {
+        if (size_ == capacity_) {
+            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+            reallocate(new_capacity);
+        }
+
+        data_[size_] = T(std::forward<Args>(args)...);
+        ++size_;
+    }
+
+    //insert value at index
+    template<typename T>
+    void Vector<T>::insert(size_t index, const T& value)
+    {
+        assert(index <= size_);
+
+        if (size_ == capacity_)
+        {
+            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+            reallocate(new_capacity);
+        }
+
+        for (size_t i = size_; i > index; --i)
+        {
+            data_[i] = std::move(data_[i - 1]);
+        }
+
+        data_[index] = value;
+        ++size_;
+    }
+
+    //erase element at index
+    template<typename T>
+    void Vector<T>::erase(size_t index)
+    {
+        assert(index < size_);
+
+        for (size_t i = index; i < size_ - 1; ++i)
+        {
+            data_[i] = std::move(data_[i + 1]);
+        }
+
+        --size_;
+        data_[size_].~T();
+    }
 
     //reallocating the vector with given capacity
     template<typename T>
@@ -125,44 +438,219 @@ namespace ministl {
         return size_ == 0;
     }
 
+    //clearing the vector
+    template<typename T>
+    void Vector<T>::clear()
+    {
+        for (size_t i = 0; i < size_; ++i)
+            data_[i].~T();
+
+        size_ = 0;
+    }
+
+/*
+    Resizes the container.
+
+    If new_size > size:
+        new elements are default constructed.
+
+    If new_size < size:
+        extra elements are destroyed.
+
+    Complexity: O(n)
+*/
+    template<typename T>
+    void Vector<T>::resize(size_t new_size)
+    {
+        if (new_size > capacity_) {
+            reallocate(new_size);
+        }
+
+        if (new_size > size_) {
+            for (size_t i = size_; i < new_size; ++i) {
+                data_[i] = T();
+            }
+        }
+        else {
+            for (size_t i = new_size; i < size_; ++i) {
+                data_[i].~T();
+            }
+        }
+
+        size_ = new_size;
+    }
+
+    template<typename T>
+    void Vector<T>::resize(size_t new_size, const T& value)
+    {
+        if (new_size > capacity_) {
+            reallocate(new_size);
+        }
+
+        if (new_size > size_) {
+            for (size_t i = size_; i < new_size; ++i) {
+                data_[i] = value;
+            }
+        }
+        else {
+            for (size_t i = new_size; i < size_; ++i) {
+                data_[i].~T();
+            }
+        }
+
+        size_ = new_size;
+    }
+
+    template<typename T>
+    void Vector<T>::shrink_to_fit()
+    {
+        if (capacity_ == size_)
+            return;
+
+        T* new_data = new T[size_];
+
+        for (size_t i = 0; i < size_; ++i) {
+            new_data[i] = std::move(data_[i]);
+        }
+
+        delete[] data_;
+
+        data_ = new_data;
+        capacity_ = size_;
+    }
+
+/*
+    Sorts the vector using std::sort.
+
+    Complexity: O(n log n)
+*/
+    template<typename T>
+    void Vector<T>::sort() {
+        std::sort(begin(), end());
+    }
 
     //access to element in index
     template<typename T>
     T& Vector<T>::operator[](size_t index)
     {
+        assert(index < size_);
         return data_[index];
     }
 
+    //const version
     template<typename T>
     const T& Vector<T>::operator[](size_t index) const
     {
         return data_[index];
     }
 
+    //access element in index with range check
     template<typename T>
-    T* Vector<T>::begin()
+    T& Vector<T>::at(size_t index)
     {
-        return data_;
+        assert(index < size_);
+        return data_[index];
+    }
+
+    //const version
+    template<typename T>
+    const T& Vector<T>::at(size_t index) const
+    {
+        assert(index < size_);
+        return data_[index];
+    }
+
+    //copy assignment operator
+    template<typename T>
+    Vector<T>& Vector<T>::operator=(const Vector& other)
+    {
+        if (this == &other)
+            return *this;   // self-assignment protection
+
+        delete[] data_;     // free current memory
+
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+
+        data_ = new T[capacity_];
+
+        for (size_t i = 0; i < size_; ++i)
+        {
+            data_[i] = other.data_[i];
+        }
+
+        return *this;
+    }
+
+    //move version
+    template<typename T>
+    Vector<T>& Vector<T>::operator=(Vector&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        delete[] data_;
+
+        data_ = other.data_;
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+
+        other.data_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = 0;
+
+        return *this;
     }
 
     template<typename T>
-    T* Vector<T>::end()
+    T& Vector<T>::front()
     {
-        return data_ + size_;
+        assert(size_ > 0);
+        return data_[0];
     }
 
     template<typename T>
-    const T* Vector<T>::begin() const
+    const T& Vector<T>::front() const
     {
-        return data_;
+        assert(size_ > 0);
+        return data_[0];
     }
 
     template<typename T>
-    const T* Vector<T>::end() const
+    T& Vector<T>::back()
     {
-        return data_ + size_;
+        assert(size_ > 0);
+        return data_[size_ - 1];
     }
 
+    template<typename T>
+    const T& Vector<T>::back() const
+    {
+        assert(size_ > 0);
+        return data_[size_ - 1];
+    }
 
+    template<typename T>
+    template<typename... Args>
+    typename Vector<T>::Iterator
+    Vector<T>::emplace(Iterator pos, Args&&... args)
+    {
+        size_t index = pos - begin();
 
-}
+        if (size_ == capacity_) {
+            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+            reallocate(new_capacity);
+        }
+
+        for (size_t i = size_; i > index; --i) {
+            data_[i] = std::move(data_[i - 1]);
+        }
+
+        data_[index] = T(std::forward<Args>(args)...);
+
+        ++size_;
+
+        return Iterator(data_ + index);
+    }
+
+}// namespace ministl
