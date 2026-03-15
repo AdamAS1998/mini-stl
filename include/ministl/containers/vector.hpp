@@ -17,12 +17,13 @@
     Author: Adam Abu Saleh
 */
 
+// ideas for later, prolly should add const with size with initial 0's and option to initialize with another num
 #pragma once
-#include <cstddef>  // size_t
+#include <cstddef>  // size_t, ptrdiff_t
 #include <cassert>  // assert()
-#include <utility>
-#include <type_traits>
-#include <algorithm>
+#include <utility>  // std::move, std::forward, std::swap
+#include <type_traits>  // std::remove_pointer_t for iterator value_type
+#include <algorithm> // std::sort, std::max
 namespace ministl {
 
 /*
@@ -66,15 +67,16 @@ namespace ministl {
 
         void push_back(const T& value);
         void push_back(T&& value);
-        void pop_back();
 
+        void pop_back();
         template<typename... Args>
         void emplace_back(Args&&... args);
 
+        void insert(size_t index, const T& value);
+        void insert(size_t index, T&& value);
         template<typename... Args>
         Iterator emplace(Iterator pos, Args&&... args);
 
-        void insert(size_t index, const T& value);
         void erase(size_t index);
 
         void reserve(size_t new_capacity);
@@ -105,7 +107,10 @@ namespace ministl {
         Vector& operator=(const Vector& other);
         Vector& operator=(Vector&& other) noexcept;
 
+        // Returns a pointer to the first element in the vector's contiguous storage.
         T* data() noexcept { return data_; }
+
+        // Const overload returning a pointer to the first element.
         const T* data() const noexcept { return data_; }
 
         void swap(Vector& other) noexcept {
@@ -161,16 +166,30 @@ namespace ministl {
             Ptr ptr;
 
         public:
-            using reference = std::remove_pointer_t<Ptr>&;
-            using pointer   = Ptr;
+
+        /*
+            Standard iterator trait definitions.
+            These aliases allow std::iterator_traits to detect the iterator's
+            value type, reference type, pointer type, distance type, and category,
+            enabling full compatibility with STL algorithms.
+        */
+            using value_type = std::remove_pointer_t<Ptr>; // the type of element the iterator refers to (T)
+
+            using difference_type = std::ptrdiff_t; // represent the distance between two iterators (can be negative)
+
+            using pointer = Ptr; // Pointer type to the element (T*)
+
+            using reference = value_type&; // Reference type returned when de-referencing the iterator (*it)
+
+            // Declares this as a random-access iterator so STL algorithms
+            // like std::sort can use optimized implementations
+            using iterator_category = std::random_access_iterator_tag;
 
             explicit VectorIterator(Ptr p) : ptr(p) {}
 
             reference operator*() const { return *ptr; }
-
             pointer operator->() const { return ptr; }
 
-            // prefix increment
             VectorIterator& operator++() {
                 ++ptr;
                 return *this;
@@ -265,6 +284,8 @@ namespace ministl {
     }
 
     //move constructor
+    // && is rvalue reference, a reference to a temporary object that is about to be destroyed.
+    // basically its stealing the allocated memory instead of allocating and copying which is slow
     template<typename T>
     Vector<T>::Vector(Vector&& other) noexcept
             : data_(other.data_),
@@ -321,8 +342,8 @@ namespace ministl {
     {
         if (size_ == capacity_)
         {
-            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
             // geometric growth to guarantee amortized O(1) push_back
+            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
             reallocate(new_capacity);
         }
 
@@ -356,7 +377,8 @@ namespace ministl {
         data_[size_].~T();
     }
 
-    //same as push_back but this avoids creating temp copies
+    // Constructs a new element directly at the end of the vector by forwarding the
+    // provided arguments to T's constructor, avoiding temporary objects.
     template<typename T>
     template<typename... Args>
     void Vector<T>::emplace_back(Args&&... args)
@@ -391,6 +413,45 @@ namespace ministl {
         ++size_;
     }
 
+    template<typename T>
+    void Vector<T>::insert(size_t index, T&& value)
+    {
+        assert(index <= size_);
+
+        if(size_ == capacity_)
+            reallocate(capacity_ == 0 ? 1 : capacity_ * 2);
+
+        for(size_t i = size_; i > index; --i)
+            data_[i] = std::move(data_[i-1]);
+
+        data_[index] = std::move(value);
+        ++size_;
+    }
+
+    //emplace version of insert
+    template<typename T>
+    template<typename... Args>
+    typename Vector<T>::Iterator
+    Vector<T>::emplace(Iterator pos, Args&&... args)
+    {
+        size_t index = pos - begin();
+
+        if (size_ == capacity_) {
+            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+            reallocate(new_capacity);
+        }
+
+        for (size_t i = size_; i > index; --i) {
+            data_[i] = std::move(data_[i - 1]);
+        }
+
+        data_[index] = T(std::forward<Args>(args)...);
+
+        ++size_;
+
+        return Iterator(data_ + index);
+    }
+
     //erase element at index
     template<typename T>
     void Vector<T>::erase(size_t index)
@@ -405,6 +466,7 @@ namespace ministl {
         --size_;
         data_[size_].~T();
     }
+
 
     //reallocating the vector with given capacity
     template<typename T>
@@ -462,9 +524,8 @@ namespace ministl {
     template<typename T>
     void Vector<T>::resize(size_t new_size)
     {
-        if (new_size > capacity_) {
-            reallocate(new_size);
-        }
+        if(new_size > capacity_) //prevents many reallocations
+            reallocate(std::max(new_size, capacity_ * 2));
 
         if (new_size > size_) {
             for (size_t i = size_; i < new_size; ++i) {
@@ -480,6 +541,7 @@ namespace ministl {
         size_ = new_size;
     }
 
+    //instead if default const we give it a value
     template<typename T>
     void Vector<T>::resize(size_t new_size, const T& value)
     {
@@ -541,14 +603,14 @@ namespace ministl {
     template<typename T>
     const T& Vector<T>::operator[](size_t index) const
     {
+        assert(index < size_);
         return data_[index];
     }
 
-    //access element in index with range check
+    //access element with no index check (throws exception )
     template<typename T>
     T& Vector<T>::at(size_t index)
     {
-        assert(index < size_);
         return data_[index];
     }
 
@@ -556,7 +618,6 @@ namespace ministl {
     template<typename T>
     const T& Vector<T>::at(size_t index) const
     {
-        assert(index < size_);
         return data_[index];
     }
 
@@ -628,29 +689,6 @@ namespace ministl {
     {
         assert(size_ > 0);
         return data_[size_ - 1];
-    }
-
-    template<typename T>
-    template<typename... Args>
-    typename Vector<T>::Iterator
-    Vector<T>::emplace(Iterator pos, Args&&... args)
-    {
-        size_t index = pos - begin();
-
-        if (size_ == capacity_) {
-            size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
-            reallocate(new_capacity);
-        }
-
-        for (size_t i = size_; i > index; --i) {
-            data_[i] = std::move(data_[i - 1]);
-        }
-
-        data_[index] = T(std::forward<Args>(args)...);
-
-        ++size_;
-
-        return Iterator(data_ + index);
     }
 
 }// namespace ministl
