@@ -1,5 +1,63 @@
 #include <iostream>
+#include "ministl/containers/linked_list.hpp"
+
+int main() {
+
+    ministl::List<int> list;
+
+    list.push_back(1);
+    list.push_back(2);
+    list.push_back(3);
+
+    std::cout << "List: ";
+
+    for(auto it = list.begin(); it != list.end(); ++it)
+        std::cout << *it << " ";
+
+    list.push_front(0);
+
+    std::cout << "List: ";
+
+    for(auto it = list.begin(); it != list.end(); ++it)
+        std::cout << *it << " ";
+
+    list.pop_back();
+
+    std::cout << "List: ";
+
+    for(auto it = list.begin(); it != list.end(); ++it)
+        std::cout << *it << " ";
+
+
+    auto it = list.begin();
+    ++it;
+
+    list.insert(it, 99);
+
+    std::cout << "List: ";
+
+    for(auto it2 = list.begin(); it2 != list.end(); ++it2)
+        std::cout << *it2 << " ";
+
+    auto it3 = list.begin();
+    ++it3;
+
+    list.erase(it3);
+
+    std::cout << "List: ";
+
+    for(auto it4 = list.begin(); it4 != list.end(); ++it4)
+        std::cout << *it4 << " ";
+
+
+}
+
+
+
+/*
+#include <iostream>
 #include "ministl/containers/vector.hpp"
+#include "ministl/containers/linked_list.hpp"
 
 int main()
 {
@@ -35,4 +93,4 @@ int main()
     std::cout << "\n";
 
     return 0;
-}
+}*/
