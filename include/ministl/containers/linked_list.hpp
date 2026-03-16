@@ -49,8 +49,8 @@ namespace ministl {
             Node* prev;
             Node* next;
 
-            Node(const T& val) : value(val), prev(nullptr), next(nullptr) {}
-            Node(T&& val) : value(std::move(val)), prev(nullptr), next(nullptr) {}
+            explicit Node(const T& val) : value(val), prev(nullptr), next(nullptr) {}
+            explicit Node(T&& val) : value(std::move(val)), prev(nullptr), next(nullptr) {}
         };
 
         // pointer to first element
@@ -593,9 +593,7 @@ namespace ministl {
         {
             if(size_ < 2)
                 return;
-
             head_ = merge_sort(head_, comp);
-
             tail_ = head_;
             while(tail_->next)
                 tail_ = tail_->next;
