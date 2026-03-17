@@ -1,8 +1,26 @@
 #include <iostream>
-#include "ministl/containers/linked_list.hpp"
+#include "ministl/containers/deque.hpp"
 
 int main() {
+    using namespace ministl;
+    Deque<int> d;
 
+    d.push_back(1);
+    d.push_back(2);
+    d.push_front(0);
+
+    assert(d[0] == 0);
+    assert(d[1] == 1);
+    assert(d[2] == 2);
+
+    d.pop_front();
+    d.pop_back();
+
+    assert(d.size() == 1);
+    assert(d[0] == 1);
+}
+
+/*
     ministl::List<int> list;
 
     list.push_back(1);
@@ -51,7 +69,7 @@ int main() {
 
 
 }
-
+*/
 
 
 /*
