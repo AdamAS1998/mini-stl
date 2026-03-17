@@ -150,6 +150,43 @@ namespace ministl {
         T& back();
         const T& back() const;
 
+        friend bool operator==(const Vector& a, const Vector& b) {
+            if (a.size_ != b.size_) return false;
+
+            for (size_t i = 0; i < a.size_; i++) {
+                if (a.data_[i] != b.data_[i])
+                    return false;
+            }
+            return true;
+        }
+
+        friend bool operator<(const Vector& a, const Vector& b) {
+            size_t n = std::min(a.size_, b.size_);
+
+            for (size_t i = 0; i < n; i++) {
+                if (a.data_[i] < b.data_[i]) return true;
+                if (b.data_[i] < a.data_[i]) return false;
+            }
+
+            return a.size_ < b.size_;
+        }
+
+        friend bool operator!=(const Vector& a, const Vector& b) {
+            return !(a == b);
+        }
+
+        friend bool operator<=(const Vector& a, const Vector& b) {
+            return !(b < a);
+        }
+
+        friend bool operator>(const Vector& a, const Vector& b) {
+            return b < a;
+        }
+
+        friend bool operator>=(const Vector& a, const Vector& b) {
+            return !(a < b);
+        }
+
 /*
     Random-access iterator for Vector.
 
