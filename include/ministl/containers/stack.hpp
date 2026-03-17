@@ -29,7 +29,7 @@
 
 #include <cstddef>   // std::size_t
 #include <utility>   // std::move, std::forward
-#include "vector.hpp"
+#include "deque.hpp"
 
 namespace ministl {
 
@@ -38,12 +38,12 @@ namespace ministl {
 
     Template Parameters:
         T         → type of elements
-        Container → underlying storage (default: Vector<T>)
+        Container → underlying storage (default: deque<T>)
 
     The container must support:
         back(), push_back(), pop_back(), size(), empty()
 */
-    template<typename T, typename Container = Vector<T>>
+    template<typename T, typename Container = Deque<T>>
     class Stack {
 
     public:

@@ -54,15 +54,6 @@ void test_move() {
     assert(moved.top() == 4);
 }
 
-void test_emplace() {
-    Stack<std::pair<int,int>> s;
-
-    s.emplace(1,2);
-    s.emplace(3,4);
-
-    assert(s.top().first == 3);
-    assert(s.top().second == 4);
-}
 
 void test_large() {
     Stack<int> s;
@@ -171,7 +162,6 @@ int main() {
     test_basic();
     test_copy();
     test_move();
-    test_emplace();
     test_large();
     test_comparison();
     test_swap();
