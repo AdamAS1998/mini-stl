@@ -319,6 +319,9 @@ namespace ministl {
         friend bool operator<=(const Deque& a, const Deque& b) { return !(b < a); }
         friend bool operator>(const Deque& a, const Deque& b) { return b < a; }
         friend bool operator>=(const Deque& a, const Deque& b) { return !(a < b); }
+
+        template<typename... Args>
+        void emplace_back(Args&&... args) {push_back(T(std::forward<Args>(args)...));}
     };
 
 } // namespace ministl
