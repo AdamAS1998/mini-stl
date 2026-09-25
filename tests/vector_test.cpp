@@ -10,6 +10,7 @@
 
 using ministl::Vector;
 
+/** AI GENERATED TESTS **/
 
 // ============================================================================
 // Helper type for testing object lifetime
