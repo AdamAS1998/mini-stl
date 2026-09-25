@@ -3,31 +3,45 @@
     -----------------------
     A simplified implementation of std::stack.
 
-    Stack is a container adapter providing LIFO behavior (Last In First Out).
-    It does NOT store elements itself, but delegates storage to an underlying container.
+    Stack is a container adapter providing LIFO behavior
+    (Last In, First Out).
+
+    It does not manage storage itself. Instead, it delegates
+    storage and operations to an underlying container.
 
     Conceptually:
+
         Stack<T, Container>
-            ↓
-        wraps Container and restricts access
+                    |
+                    v
+        underlying Container
 
     Required operations from the underlying container:
-        - back()        → access last element
-        - push_back()   → insert at end
-        - pop_back()    → remove last
-        - size()        → number of elements
-        - empty()       → check if empty
+        - back()        -> access last element
+        - push_back()   -> insert at end
+        - pop_back()    -> remove last element
+        - emplace_back()-> construct element at end
+        - size()        -> number of elements
+        - empty()       -> check if empty
+        - swap()        -> exchange contents
 
     Default container:
-        Vector<T>
-    (In STL it's deque<T> because it's more flexible for front/back operations so maybe in the future ill fix this :D)
+        Deque<T>
+
+    Complexity with Deque<T>:
+        - top()     : O(1)
+        - push()    : amortized O(1)
+        - emplace() : amortized O(1)
+        - pop()     : O(1)
+        - size()    : O(1)
+        - empty()   : O(1)
+        - swap()    : O(1)
 
     Author: Adam Abu Saleh
 */
 
 #pragma once
 
-#include <cstddef>   // std::size_t
 #include <utility>   // std::move, std::forward
 #include "deque.hpp"
 
@@ -36,108 +50,147 @@ namespace ministl {
 /*
     Stack<T, Container>
 
-    Template Parameters:
-        T         → type of elements
-        Container → underlying storage (default: deque<T>)
+    Template parameters:
+        T         -> type of elements stored
+        Container -> underlying container type
 
-    The container must support:
-        back(), push_back(), pop_back(), size(), empty()
+    The default underlying container is MiniSTL Deque<T>.
+
+    Stack restricts access to the underlying container in order
+    to preserve LIFO behavior. Elements can only be added,
+    removed, or accessed from the top of the stack.
 */
     template<typename T, typename Container = Deque<T>>
     class Stack {
 
     public:
 
-        using value_type = T;              // type of elements stored
-        using container_type = Container; // underlying container type
-        using size_type = std::size_t;    // size representation
+        using value_type = T;
+        using container_type = Container;
+        using size_type = typename container_type::size_type;
+        using reference = value_type&;
+        using const_reference = const value_type&;
 
     private:
+
     /*
-        Underlying container
+        Underlying container.
 
-        This is where all elements are actually stored.
+        All elements are actually stored here.
 
-        Why private?
-            - Prevents users from breaking LIFO behavior
-            - Forces usage through stack interface (push/pop/top)
-
-        STL uses 'protected' here to allow inheritance,
-        but for simplicity and safety we keep it private.
+        Keeping it private prevents users from directly modifying
+        the container and breaking the LIFO behavior of the stack.
     */
         container_type c;
 
     public:
 
-        // Default constructor → creates empty stack
+        // Default constructor -> creates an empty stack
         Stack() = default;
 
-        // Construct from a copy of an existing container
+        // Construct stack by copying an existing container
         explicit Stack(const container_type& cont)
                 : c(cont) {}
 
-        // Construct by moving an existing container (efficient)
+        // Construct stack by moving an existing container
         explicit Stack(container_type&& cont)
                 : c(std::move(cont)) {}
 
-        // Check if stack is empty
-        bool empty() const { return c.empty(); }
 
-        // Number of elements
-        size_type size() const { return c.size(); }
+        // Check whether the stack is empty
+        bool empty() const {
+            return c.empty();
+        }
+
+        // Return number of elements
+        size_type size() const {
+            return c.size();
+        }
+
 
         // Access top element
-        value_type& top() { return c.back(); }
+        reference top() {
+            return c.back();
+        }
 
         // Access top element (read-only)
-        const value_type& top() const { return c.back(); }
+        const_reference top() const {
+            return c.back();
+        }
 
-        // Push by copy
-        void push(const value_type& value) { c.push_back(value); }
 
-        // Push by move (avoids copy, more efficient)
-        void push(value_type&& value) { c.push_back(std::move(value)); }
+        // Push element by copy
+        void push(const value_type& value) {
+            c.push_back(value);
+        }
+
+        // Push element by move
+        void push(value_type&& value) {
+            c.push_back(std::move(value));
+        }
+
 
     /*
-        Construct element in-place at top
-        Perfect forwarding:
-            Allows constructing T directly inside container
-            without temporary objects
+        emplace()
+
+        Constructs a new element directly at the top of the stack.
+
+        Arguments are perfectly forwarded to the constructor of T,
+        avoiding the need to create a temporary object first.
+
+        Example:
+            Stack<std::pair<int, int>> s;
+            s.emplace(10, 20);
     */
-        template<class... Args>
+        template<typename... Args>
         void emplace(Args&&... args) {
             c.emplace_back(std::forward<Args>(args)...);
         }
 
+
         // Remove top element
-        void pop() { c.pop_back(); }
-
-
-        void swap(Stack& other) noexcept {std::swap(c, other.c);}
-
-        // Delegated to underlying container comparisons
-        friend bool operator==(const Stack& l, const Stack& r) {
-            return l.c == r.c;
+        void pop() {
+            c.pop_back();
         }
 
-        friend bool operator!=(const Stack& l, const Stack& r) {
-            return !(l == r);
+
+        // Exchange contents with another stack
+        void swap(Stack& other) noexcept {
+            c.swap(other.c);
         }
 
-        friend bool operator<(const Stack& l, const Stack& r) {
-            return l.c < r.c;
+
+    /*
+        Comparison operators
+
+        Stack comparisons are delegated to the underlying container.
+
+        Since Deque compares elements lexicographically,
+        Stack comparisons behave the same way.
+    */
+
+        friend bool operator==(const Stack& lhs, const Stack& rhs) {
+            return lhs.c == rhs.c;
         }
 
-        friend bool operator<=(const Stack& l, const Stack& r) {
-            return !(r < l);
+        friend bool operator!=(const Stack& lhs, const Stack& rhs) {
+            return !(lhs == rhs);
         }
 
-        friend bool operator>(const Stack& l, const Stack& r) {
-            return r < l;
+        friend bool operator<(const Stack& lhs, const Stack& rhs) {
+            return lhs.c < rhs.c;
         }
 
-        friend bool operator>=(const Stack& l, const Stack& r) {
-            return !(l < r);
+        friend bool operator<=(const Stack& lhs, const Stack& rhs) {
+            return !(rhs < lhs);
+        }
+
+        friend bool operator>(const Stack& lhs, const Stack& rhs) {
+            return rhs < lhs;
+        }
+
+        friend bool operator>=(const Stack& lhs, const Stack& rhs) {
+            return !(lhs < rhs);
         }
     };
 
