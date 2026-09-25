@@ -21,7 +21,7 @@
     - operator[]: O(1)
 
     Notes:
-    - Simpler than std::deque (does not use segmented blocks)
+    - Simpler than std::deque (does not use segmented blocks) Something optimize in the future
 
     Author: Adam Abu Saleh
 */
@@ -33,6 +33,8 @@
 #include <cassert>
 #include <algorithm>
 #include <stdexcept>
+#include <iterator>
+#include <new>
 
 namespace ministl {
 
@@ -79,12 +81,21 @@ namespace ministl {
     */
         void grow() {
             size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
-            T* new_data = new T[new_capacity];
 
-            for (size_t i = 0; i < size_; i++)
-                new_data[i] = std::move((*this)[i]);
+            T* new_data = static_cast<T*>(
+                    ::operator new(sizeof(T) * new_capacity)
+            );
 
-            delete[] data_;
+            for (size_t i = 0; i < size_; ++i) {
+                new (new_data + i) T(std::move((*this)[i]));
+            }
+
+            for (size_t i = 0; i < size_; ++i) {
+                data_[index(i)].~T();
+            }
+
+            ::operator delete(data_);
+
             data_ = new_data;
             capacity_ = new_capacity;
             front_ = 0;
@@ -96,6 +107,7 @@ namespace ministl {
         using reference = T&;
         using const_reference = const T&;
 
+        class const_iterator; //forward declaration
     /*
         iterator
 
@@ -104,87 +116,178 @@ namespace ministl {
         so it works correctly with circular buffer layout.
     */
         class iterator {
-        private:
-            Deque* d_;
-            size_t pos_;
-
         public:
             using difference_type = std::ptrdiff_t;
             using value_type = T;
             using pointer = T*;
             using reference = T&;
-
-            iterator(Deque* d = nullptr, size_t pos = 0)
+            using iterator_category = std::random_access_iterator_tag;
+        private:
+            Deque* d_;
+            difference_type pos_;
+        public:
+            iterator(Deque* d = nullptr, difference_type pos = 0)
                     : d_(d), pos_(pos) {}
 
-            reference operator*() const { return (*d_)[pos_]; }
-            pointer operator->() const { return &(*d_)[pos_]; }
-
+            reference operator*() const {return (*d_)[static_cast<size_type>(pos_)];}
+            pointer operator->() const {return &(*d_)[static_cast<size_type>(pos_)];}
             iterator& operator++() { pos_++; return *this; }
             iterator operator++(int) { iterator tmp = *this; ++(*this); return tmp; }
 
             iterator& operator--() { pos_--; return *this; }
+            iterator operator--(int) {
+                iterator tmp = *this;
+                --(*this);
+                return tmp;
+            }
 
+            iterator& operator+=(difference_type n) {
+                pos_ += n;
+                return *this;
+            }
+
+            iterator& operator-=(difference_type n) {
+                pos_ -= n;
+                return *this;
+            }
+
+            reference operator[](difference_type n) const {
+                return (*d_)[static_cast<size_type>(pos_ + n)];
+            }
             iterator operator+(difference_type n) const { return iterator(d_, pos_ + n); }
             iterator operator-(difference_type n) const { return iterator(d_, pos_ - n); }
 
-            difference_type operator-(const iterator& other) const { return pos_ - other.pos_; }
+            difference_type operator-(const iterator& other) const {return pos_ - other.pos_;}
 
-            bool operator==(const iterator& other) const { return pos_ == other.pos_; }
-            bool operator!=(const iterator& other) const { return pos_ != other.pos_; }
+            bool operator==(const iterator& other) const {
+                return d_ == other.d_ && pos_ == other.pos_;
+            }
+
+            bool operator!=(const iterator& other) const {
+                return !(*this == other);
+            }
+
             bool operator<(const iterator& other) const { return pos_ < other.pos_; }
             bool operator>(const iterator& other) const { return pos_ > other.pos_; }
             bool operator<=(const iterator& other) const { return pos_ <= other.pos_; }
             bool operator>=(const iterator& other) const { return pos_ >= other.pos_; }
+
+            friend class const_iterator;
         };
 
     /*
         const_iterator
         Same as iterator but provides read-only access.
     */
-        class const_iterator {
-        private:
-            const Deque* d_;
-            size_t pos_;
+    class const_iterator {
+    public:
+        using difference_type = std::ptrdiff_t;
+        using value_type = T;
+        using pointer = const T*;
+        using reference = const T&;
+        using iterator_category = std::random_access_iterator_tag;
 
-        public:
-            const_iterator(const Deque* d = nullptr, size_t pos = 0)
-                    : d_(d), pos_(pos) {}
+    private:
+        const Deque* d_;
+        difference_type pos_;
 
-            const_reference operator*() const { return (*d_)[pos_]; }
+    public:
+        const_iterator(const Deque* d = nullptr, difference_type pos = 0)
+                : d_(d), pos_(pos) {}
+        const_iterator(const iterator& other)
+                : d_(other.d_), pos_(other.pos_) {}
+        reference operator*() const {return (*d_)[static_cast<size_type>(pos_)];}
 
-            const_iterator& operator++() { pos_++; return *this; }
+        pointer operator->() const {return &(*d_)[static_cast<size_type>(pos_)];}
 
-            bool operator==(const const_iterator& other) const { return pos_ == other.pos_; }
-            bool operator!=(const const_iterator& other) const { return pos_ != other.pos_; }
-        };
+        const_iterator& operator++() {
+            ++pos_;
+            return *this;
+        }
+
+        const_iterator operator++(int) {
+            const_iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        const_iterator& operator--() {
+            --pos_;
+            return *this;
+        }
+
+        const_iterator operator--(int) {
+            const_iterator tmp = *this;
+            --(*this);
+            return tmp;
+        }
+
+        const_iterator& operator+=(difference_type n) {
+            pos_ += n;
+            return *this;
+        }
+
+        const_iterator& operator-=(difference_type n) {
+            pos_ -= n;
+            return *this;
+        }
+
+        const_iterator operator+(difference_type n) const {return const_iterator(d_, pos_ + n);}
+
+        const_iterator operator-(difference_type n) const {return const_iterator(d_, pos_ - n);}
+
+        difference_type operator-(const const_iterator& other) const {return pos_ - other.pos_;}
+
+        reference operator[](difference_type n) const {return (*d_)[static_cast<size_type>(pos_ + n)];}
+
+        bool operator==(const const_iterator& other) const {return d_ == other.d_ && pos_ == other.pos_;}
+
+        bool operator!=(const const_iterator& other) const {return !(*this == other);}
+
+        bool operator<(const const_iterator& other) const {return pos_ < other.pos_;}
+
+        bool operator>(const const_iterator& other) const {return other < *this;}
+
+        bool operator<=(const const_iterator& other) const {return !(other < *this);}
+
+        bool operator>=(const const_iterator& other) const {return !(*this < other);}
+    };
 
         // Default constructor → empty deque
         Deque() : data_(nullptr), size_(0), capacity_(0), front_(0) {}
 
         // Destructor
-        ~Deque() { delete[] data_; }
+        ~Deque() {
+            clear();
+            ::operator delete(data_);
+        }
 
         // Copy constructor (deep copy)
         Deque(const Deque& other)
-                : data_(nullptr), size_(other.size_), capacity_(other.capacity_), front_(0) {
-            data_ = new T[capacity_];
-            for (size_t i = 0; i < size_; i++)
-                data_[i] = other[i];
+                : data_(nullptr),
+                  size_(0),
+                  capacity_(other.capacity_),
+                  front_(0) {
+
+            if (capacity_ != 0) {
+                data_ = static_cast<T*>(
+                        ::operator new(sizeof(T) * capacity_)
+                );
+            }
+
+            for (size_t i = 0; i < other.size_; ++i) {
+                new (data_ + i) T(other[i]);
+                ++size_;
+            }
         }
 
         // Copy assignment
         Deque& operator=(const Deque& other) {
-            if (this == &other) return *this;
+            if (this == &other)
+                return *this;
 
-            delete[] data_;
-            size_ = other.size_;
-            capacity_ = other.capacity_;
-            front_ = 0;
-
-            data_ = new T[capacity_];
-            for (size_t i = 0; i < size_; i++)
-                data_[i] = other[i];
+            Deque temp(other);
+            swap(temp);
 
             return *this;
         }
@@ -201,9 +304,11 @@ namespace ministl {
 
         // Move assignment (releases current and steals resources)
         Deque& operator=(Deque&& other) noexcept {
-            if (this == &other) return *this;
+            if (this == &other)
+                return *this;
 
-            delete[] data_;
+            clear();
+            ::operator delete(data_);
 
             data_ = other.data_;
             size_ = other.size_;
@@ -219,6 +324,7 @@ namespace ministl {
         }
 
         size_type size() const { return size_; }
+        size_type capacity() const { return capacity_; }
         bool empty() const { return size_ == 0; }
 
         reference operator[](size_type i) {
@@ -237,8 +343,19 @@ namespace ministl {
             return (*this)[i];
         }
 
+        const_reference at(size_type i) const {
+            if (i >= size_)
+                throw std::out_of_range("Deque::at");
+            return (*this)[i];
+        }
+
         // Access first element
         reference front() {
+            assert(!empty());
+            return data_[front_];
+        }
+
+        const_reference front() const {
             assert(!empty());
             return data_[front_];
         }
@@ -249,45 +366,85 @@ namespace ministl {
             return data_[index(size_ - 1)];
         }
 
+        const_reference back() const {
+            assert(!empty());
+            return data_[index(size_ - 1)];
+        }
+
         iterator begin() { return iterator(this, 0); }
         iterator end() { return iterator(this, size_); }
 
         const_iterator begin() const { return const_iterator(this, 0); }
         const_iterator end() const { return const_iterator(this, size_); }
 
+        const_iterator cbegin() const {return const_iterator(this, 0);}
+        const_iterator cend() const {return const_iterator(this, size_);}
+
         // Insert at back
         void push_back(const T& value) {
-            if (size_ == capacity_) grow();
-            data_[index(size_)] = value;
-            size_++;
+            if (size_ == capacity_)
+                grow();
+
+            new (data_ + index(size_)) T(value);
+            ++size_;
+        }
+
+        void push_back(T&& value) {
+            if (size_ == capacity_)
+                grow();
+
+            new (data_ + index(size_)) T(std::move(value));
+            ++size_;
         }
 
         // Insert at front
         void push_front(const T& value) {
-            if (size_ == capacity_) grow();
+            if (size_ == capacity_)
+                grow();
+
             front_ = (front_ == 0 ? capacity_ - 1 : front_ - 1);
-            data_[front_] = value;
-            size_++;
+
+            new (data_ + front_) T(value);
+            ++size_;
+        }
+
+        void push_front(T&& value) {
+            if (size_ == capacity_)
+                grow();
+
+            front_ = (front_ == 0 ? capacity_ - 1 : front_ - 1);
+
+            new (data_ + front_) T(std::move(value));
+            ++size_;
         }
 
         // Remove last element
         void pop_back() {
             assert(!empty());
-            size_--;
+
+            data_[index(size_ - 1)].~T();
+            --size_;
         }
 
         // Remove first element
         void pop_front() {
             assert(!empty());
+
+            data_[front_].~T();
             front_ = (front_ + 1) % capacity_;
-            size_--;
+            --size_;
         }
 
         // Clear all elements (keeps capacity)
         void clear() {
+            for (size_t i = 0; i < size_; ++i) {
+                data_[index(i)].~T();
+            }
+
             size_ = 0;
             front_ = 0;
         }
+
 
         // Swap contents with another deque
         void swap(Deque& other) noexcept {
@@ -321,7 +478,30 @@ namespace ministl {
         friend bool operator>=(const Deque& a, const Deque& b) { return !(a < b); }
 
         template<typename... Args>
-        void emplace_back(Args&&... args) {push_back(T(std::forward<Args>(args)...));}
+        reference emplace_back(Args&&... args) {
+            if (size_ == capacity_)
+                grow();
+
+            size_type pos = index(size_);
+
+            new (data_ + pos) T(std::forward<Args>(args)...);
+            ++size_;
+
+            return data_[pos];
+        }
+
+        template<typename... Args>
+        reference emplace_front(Args&&... args) {
+            if (size_ == capacity_)
+                grow();
+
+            front_ = (front_ == 0 ? capacity_ - 1 : front_ - 1);
+
+            new (data_ + front_) T(std::forward<Args>(args)...);
+            ++size_;
+
+            return data_[front_];
+        }
     };
 
 } // namespace ministl
