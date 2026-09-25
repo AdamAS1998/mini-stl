@@ -49,8 +49,11 @@ namespace ministl {
             Node* prev;
             Node* next;
 
-            explicit Node(const T& val) : value(val), prev(nullptr), next(nullptr) {}
-            explicit Node(T&& val) : value(std::move(val)), prev(nullptr), next(nullptr) {}
+            template<typename... Args>
+            explicit Node(Args&&... args)
+                    : value(std::forward<Args>(args)...),
+                      prev(nullptr),
+                      next(nullptr) {}
         };
 
         // pointer to first element
@@ -74,20 +77,24 @@ namespace ministl {
 
         private:
             Node* node_;
+            Node* tail_;
 
         public:
 
-            using value_type = std::remove_pointer_t<Ptr>;
+            using value_type = std::remove_cv_t<std::remove_pointer_t<Ptr>>;
             using difference_type = std::ptrdiff_t;
             using pointer = Ptr;
-            using reference = value_type&;
+            using reference = std::remove_pointer_t<Ptr>&;
             using iterator_category = std::bidirectional_iterator_tag;
 
 
-            explicit ListIterator(Node* node = nullptr) : node_(node) {}
+            explicit ListIterator(Node* node = nullptr, Node* tail = nullptr)
+                    : node_(node), tail_(tail) {}
 
             template<typename P>
-            ListIterator(const ListIterator<P>& other) : node_(other.node_) {}
+            requires std::is_convertible_v<P, Ptr>
+            ListIterator(const ListIterator<P>& other)
+                    : node_(other.node_), tail_(other.tail_) {}
 
             reference operator*() const {
                 assert(node_);
@@ -115,25 +122,34 @@ namespace ministl {
             }
 
             ListIterator& operator--() {
+                if (node_)
+                    node_ = node_->prev;
+                else
+                    node_ = tail_;
+
                 assert(node_);
-                node_ = node_->prev;
                 return *this;
             }
 
             ListIterator operator--(int) {
-                assert(node_);
                 ListIterator tmp = *this;
-                node_ = node_->prev;
+                --(*this);
                 return tmp;
             }
 
-            bool operator==(const ListIterator& other) const {
+            template<typename P>
+            bool operator==(const ListIterator<P>& other) const {
                 return node_ == other.node_;
             }
 
-            bool operator!=(const ListIterator& other) const {
+            template<typename P>
+            bool operator!=(const ListIterator<P>& other) const {
                 return node_ != other.node_;
             }
+
+        private:
+            template<typename>
+            friend class ListIterator;
 
             friend class List;
         };
@@ -144,10 +160,26 @@ namespace ministl {
         // default constructor
         List() : head_(nullptr), tail_(nullptr), size_(0) {}
 
-        // copy constructor (deep copy)
-        List(const List& other) : head_(nullptr), tail_(nullptr), size_(0) {
-            for(Node* curr = other.head_; curr; curr = curr->next)
-                push_back(curr->value);
+    /*
+        Copy constructor.
+
+        Performs a deep copy of all nodes.
+        If copying an element throws, already-created nodes
+        are destroyed before the exception is rethrown.
+
+        Complexity: O(n)
+    */
+        List(const List& other)
+                : head_(nullptr), tail_(nullptr), size_(0) {
+
+            try {
+                for (Node* curr = other.head_; curr; curr = curr->next)
+                    push_back(curr->value);
+            }
+            catch (...) {
+                clear();
+                throw;
+            }
         }
 
         // move constructor: transfers ownership of node chain without copying elements
@@ -158,15 +190,20 @@ namespace ministl {
             other.size_ = 0;
         }
 
-        // copy assignment
+    /*
+        Copy assignment using copy-and-swap.
+
+        Creates the copy first so that if copying fails,
+        the current list remains unchanged.
+
+        Complexity: O(n)
+    */
         List& operator=(const List& other) {
-            if(this == &other)
+            if (this == &other)
                 return *this;
 
-            clear();
-
-            for(Node* curr = other.head_; curr; curr = curr->next)
-                push_back(curr->value);
+            List temp(other);
+            swap(temp);
 
             return *this;
         }
@@ -221,28 +258,55 @@ namespace ministl {
         Complexity: O(1)
     */
         void push_back(const T& value) {
-            Node* node = new Node(value);
-            if(empty()){
-                head_ = tail_ = node;
-            } else {
-                tail_->next = node;
-                node->prev = tail_;
-                tail_ = node;
-            }
-            size_++;
+            emplace_back(value);
         }
 
         // move version
         void push_back(T&& value) {
-            Node* node = new Node(std::move(value));
-            if(empty()){
+            emplace_back(std::move(value));
+        }
+    /*
+        Constructs an element directly at the end of the list.
+
+        Complexity: O(1)
+    */
+        template<typename... Args>
+        T& emplace_back(Args&&... args) {
+            Node* node = new Node(std::forward<Args>(args)...);
+
+            if (empty()) {
                 head_ = tail_ = node;
-            } else {
+            }
+            else {
                 tail_->next = node;
                 node->prev = tail_;
                 tail_ = node;
             }
-            size_++;
+
+            ++size_;
+            return node->value;
+        }
+
+    /*
+        Constructs an element directly at the beginning of the list.
+
+        Complexity: O(1)
+    */
+        template<typename... Args>
+        T& emplace_front(Args&&... args) {
+            Node* node = new Node(std::forward<Args>(args)...);
+
+            if (empty()) {
+                head_ = tail_ = node;
+            }
+            else {
+                node->next = head_;
+                head_->prev = node;
+                head_ = node;
+            }
+
+            ++size_;
+            return node->value;
         }
 
     /*
@@ -250,27 +314,11 @@ namespace ministl {
         Complexity: O(1)
     */
         void push_front(const T& value) {
-            Node* node = new Node(value);
-            if(empty()){
-                head_ = tail_ = node;
-            } else {
-                node->next = head_;
-                head_->prev = node;
-                head_ = node;
-            }
-            size_++;
+            emplace_front(value);
         }
 
         void push_front(T&& value) {
-            Node* node = new Node(std::move(value));
-            if(empty()){
-                head_ = tail_ = node;
-            } else {
-                node->next = head_;
-                head_->prev = node;
-                head_ = node;
-            }
-            size_++;
+            emplace_front(std::move(value));
         }
 
     /*
@@ -322,18 +370,35 @@ namespace ministl {
             size_ = 0;
         }
 
+    /*
+        Resizes the list to contain count elements.
+
+        New elements are default-constructed when the list grows.
+
+        Complexity: O(|count - size|)
+    */
         void resize(size_t count) {
-            while(size_ > count)
+            while (size_ > count)
                 pop_back();
-            while(size_ < count)
-                push_back(T());
+
+            while (size_ < count)
+                emplace_back();
         }
 
+    /*
+        Resizes the list to contain count elements.
+
+        If the list grows, new elements are copies of value.
+        If the list shrinks, elements are removed from the back.
+
+        Complexity: O(|count - size|)
+    */
         void resize(size_t count, const T& value) {
-            while(size_ > count)
+            while (size_ > count)
                 pop_back();
-            while(size_ < count)
-                push_back(value);
+
+            while (size_ < count)
+                emplace_back(value);
         }
 
     /*
@@ -341,86 +406,81 @@ namespace ministl {
 
         Complexity: O(1)
     */
-        iterator insert(iterator pos, const T& value) {
-            if(pos.node_ == nullptr) {
-                push_back(value);
-                return iterator(tail_);
-            }
-            Node* curr = pos.node_;
-            Node* node = new Node(value);
-            node->next = curr;
-            node->prev = curr->prev;
-            if(curr->prev)
-                curr->prev->next = node;
-            else
-                head_ = node;
-            curr->prev = node;
-            size_++;
-            return iterator(node);
+        iterator insert(const_iterator pos, const T& value) {
+            return emplace(pos, value);
         }
 
-        iterator insert(iterator pos, T&& value)
-        {
-            if(pos.node_ == nullptr)
-            {
-                push_back(std::move(value));
-                return iterator(tail_);
-            }
-            Node* curr = pos.node_;
-            Node* node = new Node(std::move(value));
-            node->next = curr;
-            node->prev = curr->prev;
-            if(curr->prev)
-                curr->prev->next = node;
-            else
-                head_ = node;
-            curr->prev = node;
-            size_++;
-            return iterator(node);
-        }
-
-        iterator insert(const_iterator pos, const T& value){
-            return insert(iterator(pos.node_), value);
+        iterator insert(const_iterator pos, T&& value) {
+            return emplace(pos, std::move(value));
         }
 
     /*
-        Removes element at iterator position.
+        Constructs an element directly before pos.
 
         Complexity: O(1)
     */
-        iterator erase(iterator pos) {
+        template<typename... Args>
+        iterator emplace(const_iterator pos, Args&&... args) {
+            if (pos.node_ == nullptr) {
+                emplace_back(std::forward<Args>(args)...);
+                return iterator(tail_, tail_);
+            }
+
             Node* curr = pos.node_;
-            if(!curr)
+            Node* node = new Node(std::forward<Args>(args)...);
+
+            node->next = curr;
+            node->prev = curr->prev;
+
+            if (curr->prev)
+                curr->prev->next = node;
+            else
+                head_ = node;
+
+            curr->prev = node;
+
+            ++size_;
+            return iterator(node, tail_);
+        }
+    /*
+        Removes the element at pos and returns an iterator
+        to the element following the erased element.
+
+        Complexity: O(1)
+    */
+        iterator erase(const_iterator pos) {
+            Node* curr = pos.node_;
+
+            if (!curr)
                 return end();
+
             Node* next = curr->next;
-            if(curr->prev)
+
+            if (curr->prev)
                 curr->prev->next = curr->next;
             else
                 head_ = curr->next;
-            if(curr->next)
+
+            if (curr->next)
                 curr->next->prev = curr->prev;
             else
                 tail_ = curr->prev;
+
             delete curr;
-            size_--;
-            return iterator(next);
+            --size_;
+
+            return iterator(next, tail_);
         }
 
-        iterator erase(const_iterator pos){
-            return erase(iterator(pos.node_));
-        }
 
-        iterator begin() { return iterator(head_); }
+        iterator begin() { return iterator(head_, tail_); }
+        iterator end() { return iterator(nullptr, tail_); }
 
-        iterator end() { return iterator(nullptr); }
+        const_iterator begin() const { return const_iterator(head_, tail_); }
+        const_iterator end() const { return const_iterator(nullptr, tail_); }
 
-        const_iterator begin() const { return const_iterator(head_); }
-
-        const_iterator end() const { return const_iterator(nullptr); }
-
-        const_iterator cbegin() const { return const_iterator(head_); }
-
-        const_iterator cend() const { return const_iterator(nullptr); }
+        const_iterator cbegin() const { return const_iterator(head_, tail_); }
+        const_iterator cend() const { return const_iterator(nullptr, tail_); }
 
         void swap(List& other) noexcept{
             std::swap(head_, other.head_);
@@ -428,14 +488,15 @@ namespace ministl {
             std::swap(size_, other.size_);
         }
 
-        void remove(const T& value){
-            auto it = begin();
-            while(it != end()){
-                if(*it == value)
-                    it = erase(it);
-                else
-                    ++it;
-            }
+    /*
+        Removes all elements equal to value.
+
+        Complexity: O(n)
+    */
+        void remove(const T& value) {
+            remove_if([&value](const T& element) {
+                return element == value;
+            });
         }
 
         //list.remove_if([](int x){ return x % 2 == 0; });
@@ -459,48 +520,67 @@ namespace ministl {
             std::swap(head_, tail_);
         }
 
-        void unique(){
-            if(empty()) return;
+    /*
+        Removes consecutive elements for which pred returns true.
+
+        Complexity: O(n)
+    */
+        template<typename BinaryPred>
+        void unique(BinaryPred pred) {
+            if (empty())
+                return;
+
             auto it = begin();
             auto next = it;
             ++next;
-            while(next != end()){
-                if(*it == *next)
+
+            while (next != end()) {
+                if (pred(*it, *next))
                     next = erase(next);
-                else{
+                else {
                     it = next;
                     ++next;
                 }
             }
         }
 
-        void splice(iterator pos, List& other)
-        {
-            if(other.empty()) return;
+        void unique() {
+            unique([](const T& a, const T& b) {
+                return a == b;
+            });
+        }
 
-            if(pos.node_ == nullptr){
-                if(empty()){
+        void splice(const_iterator pos, List& other) {
+            if (this == &other || other.empty())
+                return;
+
+            if (pos.node_ == nullptr) {
+                if (empty()) {
                     head_ = other.head_;
                     tail_ = other.tail_;
                 }
-                else{
+                else {
                     tail_->next = other.head_;
                     other.head_->prev = tail_;
                     tail_ = other.tail_;
                 }
             }
-            else{
+            else {
                 Node* curr = pos.node_;
                 Node* before = curr->prev;
-                if(before)
+
+                if (before)
                     before->next = other.head_;
                 else
                     head_ = other.head_;
+
                 other.head_->prev = before;
                 other.tail_->next = curr;
                 curr->prev = other.tail_;
             }
+
             size_ += other.size_;
+
             other.head_ = nullptr;
             other.tail_ = nullptr;
             other.size_ = 0;
@@ -519,23 +599,6 @@ namespace ministl {
             if(second)
                 second->prev = nullptr;
             return second;
-        }
-
-        Node* merge(Node* a, Node* b){
-            if(!a) return b;
-            if(!b) return a;
-            if(a->value <= b->value){
-                a->next = merge(a->next, b);
-                if(a->next) a->next->prev = a;
-                a->prev = nullptr;
-                return a;
-            }
-            else{
-                b->next = merge(a, b->next);
-                if(b->next) b->next->prev = b;
-                b->prev = nullptr;
-                return b;
-            }
         }
 
         template<typename Compare>
@@ -566,15 +629,6 @@ namespace ministl {
             node = merge_sort(node, comp);
             second = merge_sort(second, comp);
             return merge(node, second, comp);
-        }
-
-        Node* merge_sort(Node* node){
-            if(!node || !node->next)
-                return node;
-            Node* second = split(node);
-            node = merge_sort(node);
-            second = merge_sort(second);
-            return merge(node, second);
         }
 
     public:
