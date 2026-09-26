@@ -12,6 +12,11 @@
 
     Complexity guarantees follow std::list where possible.
 
+    Notes:
+    - Currently uses head/tail pointers with nullptr boundaries.
+    - Future improvement: use a circular sentinel node to simplify
+      insertion, erasure, and iterator edge cases.
+
     Author: Adam Abu Saleh
 */
 

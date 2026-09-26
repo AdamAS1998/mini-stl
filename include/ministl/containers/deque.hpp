@@ -21,7 +21,7 @@
     - operator[]: O(1)
 
     Notes:
-    - Simpler than std::deque (does not use segmented blocks) Something optimize in the future
+    - Simpler than std::deque (does not use segmented blocks) Something to optimize in the future
 
     Author: Adam Abu Saleh
 */
